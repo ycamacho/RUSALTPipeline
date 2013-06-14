@@ -333,12 +333,12 @@ def dictionaries():
 					break
 				else:
 					print "Invalid input. You must enter either 0 or 1."
-			if answer == 0:
+			if answer == '0':
 				temp = standards.get(angle,[])
 				temp.append(img)
 				standards[angle] = temp
 				print img+' sorted as standard star with angle: '+angle
-			elif answer == 1:
+			elif answer == '1':
 				temp = sciences.get(angle,[])
 				temp.append(img)
 				sciences[angle] = temp
@@ -1439,7 +1439,7 @@ def extractstandards(standardimages=wavestandards):
 		hdr1_old = hdulist[1].header.copy()
 		hdulist.close()
 		# setting answer = 1 (bright spectrum) for run_apall since standards will be extracted non-interactively
-		answer = 1
+		answer = '1'
 		# output filenames
 		name = 'std'+str(angle)+'ext'+suffix+'.fits'
 		auxname = 'std'+str(angle)+'ext'+suffix+'AUX'+'.fits'
@@ -2292,7 +2292,7 @@ def run_apall(twodimage,spectrum,faint):
 	# interactive apall: yes for science; no for standards
 	apextract.apall.interactive='yes'
 	# changes some parameters again if user indicated that the line looks really faint
-	if faint==0:
+	if faint=='0':
 		apextract.apall.nsum=-3000
 		apextract.apall.b_naverage=-5
 		apextract.apall.b_niterate = 2
