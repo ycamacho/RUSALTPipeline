@@ -682,8 +682,8 @@ def flattenarcs(arcimages=arcs,normalizedflats=normflats):
 		elif len(arclist) == 2:
 			for img in arclist: # pick arc with LAMPID!='None'; I set this manually in case of SALT error
 				hdr = pyfits.getheader(img,0)
-				lampid = hdr['LAMPID']
-				if lampid != 'None':
+				lampid = hdr['LAMPID'].lower()
+				if lampid != 'none':
 					arcimages[angle]=img
 					break
 		else:
