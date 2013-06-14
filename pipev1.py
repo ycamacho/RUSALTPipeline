@@ -2478,11 +2478,11 @@ while True:
 			break
 		else:
 			print "Invalid input. You must enter a number from the menu."
-	if choice==0:
+	if answer=='0':
 		clone()
-	elif choice==1:
+	elif answer=='1':
 		fullreduce()
-	elif choice==2:
+	elif answer=='2':
 		sys.exit("Thanks for using this pipeline!")
 	else:
 		print 'You must pick an option from the menu.'
