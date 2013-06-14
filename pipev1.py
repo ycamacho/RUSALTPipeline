@@ -4,7 +4,7 @@
 ##### the correct installation of pyraf (which has pysalt) is used
 ##### source /usr/local/astro64/login.csh
 
-"""
+'''
 The primary data structures used in this pipeline are Python dictionaries:
 essentially lists whose elements are "keyword:value" pairs. These dictionaries
 (for flats, flat-fielded science images, extracted arc spectra, and so on)
@@ -12,12 +12,15 @@ are generally indexed by the header 'GR-ANGLE' keyword value. This makes it
 easy to associate, say, the normalized flats which have some particular GR-ANGLE value
 with their corresponding science, standard star, and arc images which have the same
 GR-ANGLE value.
-"""
+'''
 
 import pyfits
 import sys
 import os
 import shutil
+import numpy as np
+import matplotlib.pyplot as plt
+import ds9
 
 from glob import glob
 from pyraf import iraf
@@ -325,8 +328,12 @@ def dictionaries():
 			print 'The object name is: '+obj
 			print 'Please enter 0 if this name resembles an abbreviation for a standard star.'
 			print 'Please enter 1 if this name is rather long and resembles a science image.'
-			answer = raw_input("Enter 0 or 1 (see instructions above): ")
-			answer = int(answer)
+			while True:
+				answer = raw_input("Enter 0 or 1 (see instructions above): ")
+				if answer == '0' or answer == '1':
+					break
+				else:
+					print "Invalid input. You must enter either 0 or 1."
 			if answer == 0:
 				temp = standards.get(angle,[])
 				temp.append(img)
@@ -1228,23 +1235,10 @@ def subtractbackground(scienceimages=wavesciences):
 		hdr.update('DISPAXIS',1)
 		hdulist.flush()
 		hdulist.close()
-		# this displays the image in ds9 so the user can find and remember/write down:
-		# 1. the central row of the SN spectrum
-		# 2. a column far away from sky lines and not containing any cosmic rays for background subtraction
-		# 3. whether the SN spectrum is bright, or faint (i.e., is barely distinguishable from the background)
-		print wavescience+' will now be opened in the program ds9'
-		print 'Please inspect the image and ideally remember or write down the following information:'
-		print '1. The central row of the supernova spectrum. (Consult your acquisition images if needed.)'
-		print '2. A column far away from sky lines and not containing any cosmic rays -- this will be used to define your sample background region.'
-		print '3. Whether the supernova spectrum is bright or faint (barely distinguishable from the background).'
-		print 'You will need this information after you close ds9.'
-		##### ds9 code #####
-		
 		# output filenames
 		name = 'sci'+str(angle)+'bkg'+suffix+'.fits'
 		auxname = 'sci'+str(angle)+'bkg'+suffix+'AUX'+'.fits'
-		# this calls the run_background function
-		print 'You will have to input the column number that you just found which had no cosmic rays or sky lines.'
+		# this calls the run_background function (NOW COMPLETELY AUTOMATED)
 		run_background(twodimage=wavescience,newimage=auxname)
 		# this copies the old images to preserve file structure, and transfers the extracted data+header
 		imutil.imcopy(input=wavescience+'[0]',output=name+'[append]')
@@ -1310,15 +1304,15 @@ def extractsciences(scienceimages=backgroundsciences):
 	try:
 		len(scienceimages)
 	except:
-		print 'The inputted dictionary of wavelength-corrected 2D images does not exist.'
+		print 'The inputted dictionary of background-subtracted 2D images does not exist.'
 		return	
 	# This adds the DISPAXIS keyword to each image's header with value 1 and then runs apall.
 	angles = scienceimages.keys()
 	for angle in angles:
-		wavescience = scienceimages[angle]
-		suffixlist = wavescience.split('.')
+		bkgscience = scienceimages[angle]
+		suffixlist = bkgscience.split('.')
 		suffix = suffixlist[1][5:]
-		hdulist = pyfits.open(wavescience,mode='update')
+		hdulist = pyfits.open(bkgscience,mode='update')
 		hdr = hdulist[1].header
 		hdr.update('DISPAXIS',1)
 		hdr0 = hdulist[0].header
@@ -1333,31 +1327,34 @@ def extractsciences(scienceimages=backgroundsciences):
 		hdr0_old = hdulist[0].header.copy()
 		hdr1_old = hdulist[1].header.copy()
 		hdulist.close()
-		# this displays ds9 so the user can inspect the 2D image, find the spectral line and columns to sum over
-		# print '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
-		# print 'Please inspect the 2D image in ds9 and write down the following values: you will input them shortly.' 
-		# print 'Find the spectral line (row #) you will extract.' 
-		# print 'You'll sum a number of columns along this spectral line to extract it.'
-		# print 'Find a central column and choose a number of columns to sum to the left and to the right of it.'
-		# print 'You want to choose the column range such that you don't encounter chip gaps or too many sky (vertical) lines.'
-		# print '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
-		# display wavescience # display command to pop open ds9 isn't working yet
-		# thiscol = raw_input("Please enter the central column for summing over the spectral line: ")
-		# thiscol = int(thiscol)
-		# thisnsum = raw_input("Please enter the number of columns to sum over on each side of the central column: ")
-		# thisnsum = int(thisnsum)
+		# this displays the image in ds9 for the user's convenience
+		print "You will now use the PyRAF task APALL to extract the spectrum in the image: "+bkgscience
+		print "For your convenience, the image has also been opened in ds9 so you can find:"
+		print '1. The central row of the supernova spectrum. (Consult your acquisition images if needed.)'
+		print '2. Whether the supernova spectrum is bright or faint (barely distinguishable from the background).'
+		print 'The image is already background-subtracted so you do NOT need to subtract the background ('b' key).'
+		# opens current image in ds9
+		d = ds9.ds9(start=True)
+		hdulist = pyfits.open(bkgscience)
+		d.set_pyfits(hdulist)
+		d.set('zoom to fit')
+		d.set('zscale')
 		# this calls the run_apall function found further below
 		# this asks the user if the spectral line looks very faint (look in ds9)
 		# if the user says the line is very faint, then apall is run with a different set of parameters
-		answer = raw_input("Please enter 0 if the spectral line looks very faint, or 1 if it is clearly visible: ")
-		answer = int(answer) # might need an error check, though not completely necessary
+		while True:
+			answer = raw_input("Please enter 0 if the spectral line looks very faint, or 1 if it is clearly visible: ")
+			if answer == '0' or answer == '1':
+				break
+			else:
+				print "Invalid input. You must enter either 0 or 1."
 		# output filenames
 		name = 'sci'+str(angle)+'ext'+suffix+'.fits'
 		auxname = 'sci'+str(angle)+'ext'+suffix+'AUX'+'.fits'
-		run_apall(twodimage=wavescience,spectrum=auxname,faint=answer)
+		run_apall(twodimage=bkgscience,spectrum=auxname,faint=answer)
 		# this copies the old images to preserve file structure, and transfers the extracted data+header
-		imutil.imcopy(input=wavescience+'[0]',output=name+'[append]')
-		imutil.imcopy(input=wavescience+'[SCI]',output=name+'[append]')
+		imutil.imcopy(input=bkgscience+'[0]',output=name+'[append]')
+		imutil.imcopy(input=bkgscience+'[SCI]',output=name+'[append]')
 		hdulist = pyfits.open(auxname)
 		datnew = hdulist[0].data.copy()
 		hdr = hdulist[0].header
@@ -1442,27 +1439,7 @@ def extractstandards(standardimages=wavestandards):
 		hdr0_old = hdulist[0].header.copy()
 		hdr1_old = hdulist[1].header.copy()
 		hdulist.close()
-		# this displays ds9 so the user can inspect the 2D image, find the spectral line and columns to sum over
-		# print '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
-		# print 'Please inspect the 2D image in ds9 and write down the following values: you will input them shortly.' 
-		# print 'Find the spectral line (row #) you will extract.' 
-		# print 'You'll sum a number of columns along this spectral line to extract it.'
-		# print 'Find a central column and choose a number of columns to sum to the left and to the right of it.'
-		# print 'You want to choose the column range such that you don't encounter chip gaps or too many sky (vertical) lines.'
-		# print '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
-		# display wavestandard # display command to pop open ds9 isn't working yet
-		# thiscol = raw_input("Please enter the central column for summing over the spectral line: ")
-		# thiscol = int(thiscol)
-		# thisnsum = raw_input("Please enter the number of columns to sum over on each side of the central column: ")
-		# thisnsum = int(thisnsum)
-		# this calls the run_apall function found further below
-		# this asks the user if the spectral line looks very faint (look in ds9)
-		# if the user says the line is very faint, then apall is run with a different set of parameters
-		#answer = '2'
-		#while answer != '0' or answer != '1':
-		#	answer = raw_input("Please enter 0 if the spectral line looks very faint, or 1 if it is clearly visible: ")
-		#answer = int(answer)
-		# setting answer = 1 since standards will be extracted non-interactively
+		# setting answer = 1 (bright spectrum) for run_apall since standards will be extracted non-interactively
 		answer = 1
 		# output filenames
 		name = 'std'+str(angle)+'ext'+suffix+'.fits'
@@ -2258,14 +2235,14 @@ def run_background(twodimage,newimage):
 	# this resets the parameters of longslit.background
 	longslit.background.unlearn()
 	longslit.background.axis='2'
-	longslit.background.interactive='Yes'
+	longslit.background.interactive='no'
 	longslit.background.naverage='-100'
 	longslit.background.function='legendre'
-	longslit.background.order=1
-	longslit.background.low_reject=2.0
-	longslit.background.high_reject=2.0
-	longslit.background.niterate=2
-	longslit.background.grow=2.0
+	longslit.background.order=2
+	longslit.background.low_reject=1.0
+	longslit.background.high_reject=1.0
+	longslit.background.niterate=10
+	longslit.background.grow=1.0
 	# since there are 2 extensions (0 and 1), need to specify data operation extension: 1
 	twodimage = twodimage+'[1]'
 	# This runs longslit.background
@@ -2291,14 +2268,14 @@ def run_apall(twodimage,spectrum,faint):
 	apextract.apall.extract='yes'
 	apextract.apall.extras='yes'
 	apextract.apall.nfind=1 # setting this explicitly in call below so no query (for standard star)
-	apextract.apall.b_function='legendre'
+	apextract.apall.b_function='legendre' # b. stuff = background, only used for standards
 	apextract.apall.b_order=1
-	apextract.apall.b_low_reject=1.0 # since there are so many data points, generally over 1000
+	apextract.apall.b_low_reject=1.0 
 	apextract.apall.b_high_reject=1.0
-	apextract.apall.b_niterate=2
-	apextract.apall.b_grow=2
+	apextract.apall.b_niterate=1
+	apextract.apall.b_grow=1
 	apextract.apall.clean='yes'
-	apextract.apall.weights='variance'
+	apextract.apall.weights='none'
 	apextract.apall.t_nsum=25 # increased from 15 to 25 (summing/tracing over more lines)
 	apextract.apall.t_nlost=200
 	apextract.apall.t_low_reject=1.0 # since there are so many data points (over 1000 generally)
@@ -2310,7 +2287,7 @@ def run_apall(twodimage,spectrum,faint):
 	apextract.apall.t_order=2
 	apextract.apall.lsigma=2.0
 	apextract.apall.usigma=2.0
-	apextract.apall.background='fit'
+	apextract.apall.background='none'
 	apextract.apall.readnoise=3 # verify whether rdnoise is nearly the same for all images (SALT CCD)
 	apextract.apall.gain=1 # verify whether gain is nearly the same for all images (SALT CCD)
 	# interactive apall: yes for science; no for standards
@@ -2329,6 +2306,8 @@ def run_apall(twodimage,spectrum,faint):
 		print 'running apall interactively on science image: '+twodimage
 	elif first=='std':
 		apextract.apall.interactive='no'
+		apextract.apall.background='fit' # since standards aren't background-subtracted; may not be necessary though
+		apextract.apall.weights='variance' # for background
 		print 'running apall non-interactively on standard star image: '+twodimage
 	# since there are 2 extensions (0 and 1), need to specify extraction extension: 1
 	twodimage = twodimage+'[1]'
@@ -2493,27 +2472,12 @@ while True:
 	print "0. Copy the current directory's files into a new subdirectory."
 	print "1. Full reduction of the spectral data."
 	print "2. Quit."
-	# print "2. Sort your data into flats, arcs, standard stars, and science image dictionaries."
-	# print "3. Combine flat images."
-	# print "4. Normalize flat images."
-	# print "5. Flat-field your science images."
-	# print "6. Flat-field your arc images."
-	# print "7. Flat-field your standard star images."
-	# print "8. Extract science (supernova) spectra."
-	# print "9. Extract standard star spectra."
-	# print "10. Extract arc spectra."
-	# print "11. Identify lines in your arc spectra."
-	# print "12. Wavelength-calibrate your science spectra."
-	# print "13. Wavelength-calibrate your standard star spectra."
-	# print "14. Flux-calibrate your science spectra."
-	# print "15. Finalize (combine) your science spectra."
-	# print "16. Quit."
-	try: 
-		choice = raw_input("Please enter a number from the menu: ")
-		choice = int(choice)
-	except:
-		choice = raw_input("Invalid input. Please enter a number from the menu: ")
-		choice = int(choice)
+	while True:
+		answer = raw_input("Please enter a number from the menu: ")
+		if answer == '0' or answer == '1' or answer == '2':
+			break
+		else:
+			print "Invalid input. You must enter a number from the menu."
 	if choice==0:
 		clone()
 	elif choice==1:
@@ -2523,34 +2487,3 @@ while True:
 	else:
 		print 'You must pick an option from the menu.'
 		continue 
-	# elif choice==3:
-		# combineflats(flats)
-	# elif choice==4:
-		# normalizeflats(combflats)
-	# elif choice==5:
-		# flattensciences(scienceimages=sciences,normalizedflats=normflats)
-	# elif choice==6:
-		# flattenarcs(arcimages=arcs,normalizedflats=normflats)
-	# elif choice==7:
-		# flattenstandards(standardimages=standards,normalizedflats=normflats)
-	# elif choice==8:
-		# extractsciences()
-	# elif choice==9:
-		# extractstandards()
-	# elif choice==10:
-		# extractsciences()
-	# elif choice==11:
-		# identifyarcs()
-	# elif choice==12:
-		# wavecalsci()
-	# elif choice==13:
-		# wavecalstd()
-	# elif choice==14:
-		# fluxcal()
-	# elif choice==15:
-		# finalize()
-	# elif choice==16:
-		# sys.exit("Thanks for using this pipeline!")
-	# else:
-		# print 'You must pick an option from the menu.'
-		# continue 
